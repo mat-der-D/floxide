@@ -82,7 +82,19 @@ fn gradient<T: FieldValue + HasGrad>(field: &VolumeField<T, Fresh>) -> Vec<T::Gr
 - **`cargo fmt`**: フォーマットは自動化。議論しない
 - **`cargo clippy`**: lint に従う。例外は `#[allow(...)]` で明示的に許可し、理由をコメント
 - **ドキュメントコメント**: 公開 API には `///` を付ける。内部実装の自明なコードには不要
-- **モジュール構成**: `mod.rs` ではなくファイル名でモジュールを定義（Rust 2018+ スタイル）
+- **モジュール構成**: `mod.rs` ではなくファイル名でモジュールを定義（Rust 2018+ スタイル）。
+  サブモジュールを持つモジュール `foo` は `foo/mod.rs` ではなく `foo.rs` + `foo/` ディレクトリで構成する。
+  ```
+  src/
+    lib.rs          ← `pub mod tensor;`
+    tensor.rs       ← tensor モジュールの定義（サブモジュール宣言・再エクスポート）
+    tensor/         ← tensor のサブモジュール群
+      types.rs
+      ops.rs
+      ...
+  ```
+  `foo/mod.rs` 方式は使用禁止。`foo.rs` がモジュールのエントリポイントとなり、
+  同名の `foo/` ディレクトリ内にサブモジュールファイルを配置する。
 
 ---
 _パターンと原則に焦点。言語リファレンスの再掲ではない_
