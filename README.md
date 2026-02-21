@@ -1,4 +1,4 @@
-# floxide
+# dugong
 A Rust CFD framework inspired by OpenFOAM
 
 ## License
