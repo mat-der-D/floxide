@@ -46,24 +46,41 @@ CFD（数値流体力学）フレームワークの基盤となるテンソル�
 
 ### Requirement 3: 異型間演算
 
-**Objective:** As a フレームワーク開発者, I want テンソルランクが異なる型同士の物理的に意味のある演算（加算・縮約・二重縮約・内積・クロス積）を型安全に行いたい, so that 不正なテンソル演算がコンパイル時に排除される。
+**Objective:** As a フレームワーク開発者, I want テンソルランクが異なる型同士の物理的に意味のある演算（加算・単縮約・二重縮約・テンソル積・クロス積）を型安全に行いたい, so that 不正なテンソル演算がコンパイル時に排除される。
+
+**Design Principle:** `Mul` trait (`*` 演算子) は単縮約（single contraction）を表す。結果のランクは `rank(A) + rank(B) - 2` となる。この規則により全ての型の組み合わせで `*` の意味が統一される。ランク変化が異なる演算（テンソル積・クロス積・二重縮約）は名前付きメソッドで提供する。
 
 #### Acceptance Criteria
+
+**異型間加算・減算:**
 
 1. The tensor module shall `SymmTensor + SphericalTensor` → `SymmTensor` の演算を提供する。
 2. The tensor module shall `SphericalTensor + SymmTensor` → `SymmTensor` の演算を提供する。
 3. The tensor module shall `Tensor + SymmTensor` → `Tensor` の演算を提供する。
 4. The tensor module shall `Tensor + SphericalTensor` → `Tensor` の演算を提供する。
 5. The tensor module shall 上記の異型間加算に対応する減算も提供する。
-6. The tensor module shall テンソル・ベクトル縮約 `Tensor * Vector` → `Vector`（行列・ベクトル積）を提供する。
-7. The tensor module shall ベクトル・テンソル縮約 `Vector * Tensor` → `Vector` を提供する。
-8. The tensor module shall テンソル・テンソル縮約 `Tensor * Tensor` → `Tensor`（行列・行列積）を提供する。
-9. The tensor module shall `SymmTensor * Vector` → `Vector` の縮約を提供する。
-10. The tensor module shall テンソルの二重縮約 `Tensor : Tensor` → `f64` を名前付きメソッド（`double_dot` 等）で提供する。
-11. The tensor module shall `SymmTensor : SymmTensor` → `f64` の二重縮約を提供する。
-12. The tensor module shall 外積 `Vector ⊗ Vector` → `Tensor` を名前付きメソッド（`outer` 等）で提供する。
-13. The tensor module shall ベクトル内積 `Vector · Vector` → `f64` を名前付きメソッド（`dot` 等）で提供する。
-14. The tensor module shall ベクトルクロス積 `Vector × Vector` → `Vector` を名前付きメソッド（`cross` 等）で提供する。
+
+**単縮約（`*` 演算子、rank(A) + rank(B) - 2）:**
+
+6. The tensor module shall `Vector * Vector` → `f64` の内積を `Mul` trait で提供する。
+7. The tensor module shall `Tensor * Vector` → `Vector` の行列・ベクトル積を `Mul` trait で提供する。
+8. The tensor module shall `Vector * Tensor` → `Vector` のベクトル・行列積を `Mul` trait で提供する。
+9. The tensor module shall `Tensor * Tensor` → `Tensor` の行列積を `Mul` trait で提供する。
+10. The tensor module shall `SymmTensor * Vector` → `Vector` の縮約を `Mul` trait で提供する。
+11. The tensor module shall `SymmTensor * SymmTensor` → `Tensor` の行列積を `Mul` trait で提供する。
+
+**二重縮約（名前付きメソッド、rank(A) + rank(B) - 4）:**
+
+12. The tensor module shall テンソルの二重縮約 `Tensor : Tensor` → `f64` を `double_dot` メソッドで提供する。
+13. The tensor module shall `SymmTensor : SymmTensor` → `f64` の二重縮約を `double_dot` メソッドで提供する。
+
+**テンソル積（名前付きメソッド、rank(A) + rank(B)）:**
+
+14. The tensor module shall テンソル積 `Vector ⊗ Vector` → `Tensor` を `outer` メソッドで提供する。
+
+**クロス積（名前付きメソッド、rank(A) + rank(B) - 1）:**
+
+15. The tensor module shall ベクトルクロス積 `Vector × Vector` → `Vector` を `cross` メソッドで提供する。
 
 ---
 
