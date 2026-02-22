@@ -25,6 +25,7 @@
 - `typenum` 型レベル整数による次元検査（`Dim<V, M, L, T>`）
 - typestate パターンによる状態遷移の型レベル保証（`Fresh`/`Stale`）
 - trait bounds で演算の合法性をコンパイル時検証
+- `Quantity` トレイト: 次元付き型（`Dim<V, M, L, T>`）から内部値型（`type Value = V`）を公開し、`fvm` 演算子が `T: Quantity where T::Value: FieldValue` として次元付きフィールドを受け取る際の層間接続インターフェース
 
 ### コード品質
 - `cargo clippy` による静的解析

@@ -42,25 +42,31 @@ Phase 6: 統合検証              [apps/simple-solver]
 ```
 P1  types-tensor ──→ types-dimension ──→ types-quantity
          │                                    │
-P2       └──→ mesh-topology ──→ fields-core ──┘
-                    │               │
-                    │          fields-boundary
-                    │               │
-P3                  └──→ discretization-matrix
-                              │
-                    discretization-implicit
-                              │
-                    discretization-explicit
-                              │
-                         solvers-core
-                              │
-P4              runtime-factory    io-config
-                    │               │
-                    │           io-field-rw
-                    │               │
-P5            models-turbulence ────┘
-                         │
-P6              simple-solver-integration
+P2       └──→ mesh-primitive                  │
+                    │                         │
+              mesh-poly                       │
+                    │                         │
+              mesh-fv ──────→ fields-core ────┘
+                                    │
+                               fields-boundary
+                                    │
+P3                  ┌───────────────┘
+                    │
+            discretization-matrix
+                    │
+          discretization-implicit
+                    │
+          discretization-explicit
+                    │
+               solvers-core
+                    │
+P4    runtime-factory    io-config
+            │               │
+            │           io-field-rw
+            │               │
+P5    models-turbulence ────┘
+                 │
+P6    simple-solver-integration
 ```
 
 ---
@@ -158,41 +164,117 @@ P6              simple-solver-integration
 
 ## Phase 2: メッシュとフィールド (`mesh`, `fields`)
 
-### Spec 2-1: `mesh-topology`
+### Spec 2-1: `mesh-primitive`
 
-**概要**: 最小限の有限体積メッシュ構造
+**概要**: トポロジエンジン (`PrimitiveMesh`) の実装
 
 **前提**: Phase 1 完了
 
 **スコープ**:
-- `FvMesh` 構造体:
-  - セル情報（体積、中心座標）
-  - フェイス情報（面積ベクトル、中心座標、owner/neighbour セル）
-  - 内部フェイスと境界フェイスの区別
-  - ポイント（節点座標）
-- `Patch` 構造体（境界面のグループ）:
-  - パッチ名、開始フェイス番号、フェイス数
-- 直交格子（structured grid）の生成ユーティリティ:
-  - `FvMesh::unit_cube(nx, ny, nz)` — テスト用の単純なメッシュ生成
-- トポロジの整合性検証（フェイスの owner/neighbour 一貫性等）
+- `Face = Vec<usize>`（任意多角形）の型エイリアス
+- `PrimitiveMesh` 構造体:
+  - 基本データ（構築時確定・不変）: `points`, `faces`, `owner`, `neighbour`, `n_internal_faces`, `n_cells`
+  - 遅延計算ジオメトリ（`OnceCell`）: `cell_centres`, `face_centres`, `cell_volumes`, `face_areas`
+  - 遅延計算接続情報（`OnceCell`）: `cell_cells`, `cell_faces`, `cell_points`
+- `&self` アクセサメソッド（アクセス時に初期化）:
+  - `cell_volumes()`, `cell_centres()`, `face_centres()`, `face_areas()`
+  - `cell_cells()`, `cell_faces()`, `cell_points()`
+- 内部計算メソッド: `calc_cell_volumes()`, `calc_face_centres()` 等
+- 直交格子生成ユーティリティ:
+  - `PrimitiveMesh::unit_cube(nx, ny, nz)` — テスト用の単純なメッシュ生成
+- トポロジの整合性検証（owner/neighbour 一貫性等）
 
-**成果物**: `crates/mesh/src/` 全体
+**成果物**: `crates/mesh/src/primitive_mesh.rs`
 
 **テスト**:
-- 直交格子の生成と体積・面積の正確性
+- 直交格子の生成と体積・面積の正確性（手計算との比較）
+- 遅延計算の初期化が一度だけ行われること（`OnceCell` の意味論）
 - トポロジの整合性チェック
-- パッチの境界フェイス列挙
-
-**設計判断が必要**:
-- メッシュ読み込みフォーマット（OpenFOAM polyMesh / 独自 / 両方）→ この spec では生成のみ。読み込みは `io` で扱う
+- `cell_cells` / `cell_faces` の正確性
 
 ---
 
-### Spec 2-2: `fields-core`
+### Spec 2-2: `mesh-poly`
+
+**概要**: パッチ・ゾーン・並列メタデータ管理 (`PolyMesh`) の実装
+
+**前提**: Spec 2-1
+
+**スコープ**:
+- パッチ trait 階層:
+  - `PolyPatch` trait: `name()`, `start()`, `size()`, `patch_type()`, `as_coupled()`, `move_points()` フック
+  - `CoupledPatch` trait（`PolyPatch` のサブ trait）: `face_cells()`, `neighbour_cell_centres()`, `set_neighbour_cell_centres()`, `neighbour_rank()`, `transform()`
+- パッチ具象型:
+  - `WallPolyPatch` (`PolyPatch`)
+  - `CyclicPolyPatch` (`PolyPatch` + `CoupledPatch`)
+  - `ProcessorPolyPatch` (`PolyPatch` + `CoupledPatch`)
+  - `EmptyPolyPatch`, `SymmetryPolyPatch`, `WedgePolyPatch` (`PolyPatch`)
+- `Transform` 型（cyclic パッチの変換情報）
+- ゾーン型:
+  - `Zone { name: String, indices: Vec<usize> }`（cellZone / pointZone 共用）
+  - `FaceZone { name, indices, flip_map }`
+- `GlobalMeshData` 構造体（並列トポロジ情報）
+- `PolyMesh` 構造体:
+  - `primitive: PrimitiveMesh`
+  - `patches: Vec<Box<dyn PolyPatch>>`
+  - `cell_zones`, `face_zones`, `point_zones`
+  - `old_points: Option<...>`, `global_data: Option<GlobalMeshData>`
+- 委譲メソッド（`PrimitiveMesh` へのアクセス）
+
+**成果物**: `crates/mesh/src/{poly_mesh, patches/, zones}.rs`
+
+**テスト**:
+- `PolyPatch` のオブジェクト安全性
+- `as_coupled()` によるアップキャスト
+- `WallPolyPatch` / `CyclicPolyPatch` の生成と属性アクセス
+- ゾーンのインデックスアクセス
+
+---
+
+### Spec 2-3: `mesh-fv`
+
+**概要**: 有限体積法メッシュ (`FvMesh`) と並列対応構築フローの実装
+
+**前提**: Spec 2-2
+
+**スコープ**:
+- `FvPatch` trait: `poly_patch()`, `delta()`, `weights()`
+- `CoupledFvPatch` trait（`FvPatch` のサブ trait）: `poly_coupled_patch()`, `delta_neighbour()`
+- `LduMesh` trait: `ldu_addressing()`, `n_cells()`
+- `LduAddressing` 構造体: `lower`, `upper`, `losort`, `owner_start`, `losort_start`
+- `FvMesh` 構造体:
+  - `poly: PolyMesh`
+  - `fv_patches: Vec<Box<dyn FvPatch>>`
+  - `processor_patch_indices: Vec<usize>`
+  - 遅延計算（`OnceCell`）: `ldu_addressing`, `weights`, `delta_coeffs`, `non_orth_delta_coeffs`, `non_orth_correction_vectors`
+  - 旧時刻データ: `v0`, `v00`（非定常計算用）
+  - `mover: Option<Box<dyn MeshMover>>`
+- `impl LduMesh for FvMesh`
+- 委譲メソッド（`PolyMesh` / `PrimitiveMesh` へのアクセス）
+- 二相構築パターン（`build_fv_mesh` 関数）:
+  - Phase 1-2: 具象型のまま構築・初期化（`CyclicPolyPatch` の `neighbour_cell_centres` 計算、`ProcessorPolyPatch` の MPI 交換 placeholder）
+  - Phase 3: 型消去（`Vec<Box<dyn PolyPatch>>`）+ `processor_patch_indices` 記録
+  - Phase 4: `PolyMesh` → `FvMesh` 構築
+- 動的メッシュ対応 `move_points()` の骨格（MPI 交換は placeholder）
+- 直交格子から `FvMesh` を生成するテスト用ユーティリティ:
+  - `FvMesh::unit_cube(nx, ny, nz)`
+
+**成果物**: `crates/mesh/src/{fv_mesh, fv_patches/, ldu_addressing, build}.rs`
+
+**テスト**:
+- 直交格子での LDU アドレッシングの正確性
+- 補間係数（`weights`, `delta_coeffs`）の数値検証
+- `LduMesh` trait 経由のアドレッシングアクセス
+- `processor_patch_indices` が正しく記録されること
+- `FvMesh` から `PrimitiveMesh` の各量への委譲アクセス
+
+---
+
+### Spec 2-4: `fields-core`
 
 **概要**: フィールド型と typestate パターン（シリアル版）
 
-**前提**: Spec 2-1
+**前提**: Spec 2-3
 
 **スコープ**:
 - `Fresh` / `Stale` マーカー型
@@ -205,7 +287,7 @@ P6              simple-solver-integration
   - 面中心フィールド（面積分量 / 補間量）
 - 状態遷移メソッド（シリアル版・境界条件なし）:
   - `map_internal(f: impl Fn(T) -> T) -> VolumeField<'mesh, T, Stale>`
-  - placeholder の `evaluate_boundaries() -> VolumeField<'mesh, T, Fresh>`（本実装は Spec 2-3）
+  - placeholder の `evaluate_boundaries() -> VolumeField<'mesh, T, Fresh>`（本実装は Spec 2-5）
 - フィールドの基本演算（`Add`, `Sub`, `Mul<f64>` on internal values）
 
 **成果物**: `crates/fields/src/{volume_field, surface_field, state}.rs`
@@ -218,11 +300,11 @@ P6              simple-solver-integration
 
 ---
 
-### Spec 2-3: `fields-boundary`
+### Spec 2-5: `fields-boundary`
 
 **概要**: 境界条件システム
 
-**前提**: Spec 2-2
+**前提**: Spec 2-4
 
 **スコープ**:
 - `PhysicalBC<T>` trait:
@@ -541,8 +623,8 @@ Phase 3 と独立して並行開発可能な部分を含む。
 
 Phase 1: [types-tensor] → [types-field-value] → [types-dimension]
                                                         │
-Phase 2:                              [mesh-topology] → [fields-core] → [fields-boundary]
-                                                                              │
+Phase 2:       [mesh-primitive] → [mesh-poly] → [mesh-fv] → [fields-core] → [fields-boundary]
+                                                                                    │
 Phase 3:                                              [disc-matrix] → [disc-implicit] → [disc-explicit]
                                                            │
                                                       [solvers-core]

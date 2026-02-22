@@ -14,4 +14,5 @@
 - [実行時選択メカニズム・ビルドモデル](./rust_cfd_runtime_selection.md)
 - [テンソル型システム・FieldValue trait 階層](./rust_cfd_tensor_types.md)
 - [メッシュ・フィールド・並列化](./rust_cfd_mesh_field_parallel.md)
+- [3層メッシュアーキテクチャ（PrimitiveMesh / PolyMesh / FvMesh）](./mesh_architecture.md)
 - [objectRegistry 相当の設計](./rust_cfd_object_registry.md)
