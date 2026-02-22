@@ -2,4 +2,9 @@
 //!
 //! Provides finite volume mesh representation with cells, faces, and points.
 
-// TODO: Implement mesh structure
+mod error;
+mod geometry;
+mod primitive_mesh;
+
+pub use error::MeshError;
+pub use primitive_mesh::PrimitiveMesh;
