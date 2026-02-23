@@ -6,6 +6,10 @@ use dugong_types::tensor::Vector;
 ///
 /// ファン三角形分割により、任意多角形の面に対応する。
 /// 戻り値: `(face_center, face_area_vector)`
+///
+/// # Panics
+///
+/// `face` の各要素が `points` の有効なインデックスでない場合、実行時パニックとなる。
 pub(crate) fn compute_face_geometry(points: &[Vector], face: &[usize]) -> (Vector, Vector) {
     let n = face.len();
 
@@ -45,6 +49,14 @@ pub(crate) fn compute_face_geometry(points: &[Vector], face: &[usize]) -> (Vecto
 /// 全セルの体積と重心を一括計算する。
 ///
 /// 戻り値: `(cell_volumes, cell_centers)`
+///
+/// # Panics
+///
+/// 以下の前提条件に違反した場合、実行時パニックとなる。
+/// - `faces` の各面に含まれる頂点インデックスが `points` の範囲内であること。
+/// - `owner` の各要素が `n_cells` 未満であること。
+/// - `neighbor[0..n_internal_faces]` の各要素が `n_cells` 未満であること。
+/// - `n_internal_faces <= neighbor.len()` であること。
 pub(crate) fn compute_cell_geometry(
     points: &[Vector],
     faces: &[Vec<usize>],
@@ -112,6 +124,13 @@ pub(crate) fn compute_cell_geometry(
 }
 
 /// 各セルの所属面インデックスリストを構築する。
+///
+/// # Panics
+///
+/// 以下の前提条件に違反した場合、実行時パニックとなる。
+/// - `owner` の各要素が `n_cells` 未満であること。
+/// - `neighbor[0..n_internal_faces]` の各要素が `n_cells` 未満であること。
+/// - `n_internal_faces <= neighbor.len()` であること。
 pub(crate) fn compute_cell_faces(
     owner: &[usize],
     neighbor: &[usize],
@@ -129,6 +148,12 @@ pub(crate) fn compute_cell_faces(
 }
 
 /// 各セルの隣接セルリストを導出する。
+///
+/// # Panics
+///
+/// 以下の前提条件に違反した場合、実行時パニックとなる。
+/// - `n_internal_faces <= owner.len()` かつ `n_internal_faces <= neighbor.len()` であること。
+/// - `owner[0..n_internal_faces]` および `neighbor[0..n_internal_faces]` の各要素が `n_cells` 未満であること。
 pub(crate) fn compute_cell_cells(
     cell_faces: &[Vec<usize>],
     owner: &[usize],
@@ -148,6 +173,11 @@ pub(crate) fn compute_cell_cells(
 }
 
 /// 各セルの頂点インデックスを重複なく収集する。
+///
+/// # Panics
+///
+/// 以下の前提条件に違反した場合、実行時パニックとなる。
+/// - `cell_faces` の各面インデックスが `faces` の範囲内であること。
 pub(crate) fn compute_cell_points(
     cell_faces: &[Vec<usize>],
     faces: &[Vec<usize>],

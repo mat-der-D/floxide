@@ -139,6 +139,10 @@ impl PrimitiveMesh {
 
     /// face_centers と face_areas を一括計算して両方の OnceLock を初期化する。
     /// 不変条件: このメソッド完了後、face_centers・face_areas の両方が初期化済みである。
+    ///
+    /// # Safety (論理的前提条件)
+    ///
+    /// `new()` で faces 内の全頂点インデックスが points の範囲内であることを検証済み。
     fn ensure_face_geometry(&self) {
         self.face_centers.get_or_init(|| {
             let mut centers = Vec::with_capacity(self.faces.len());
@@ -167,6 +171,14 @@ impl PrimitiveMesh {
 
     /// cell_volumes と cell_centers を一括計算して両方の OnceLock を初期化する。
     /// 不変条件: このメソッド完了後、cell_volumes・cell_centers の両方が初期化済みである。
+    ///
+    /// # Safety (論理的前提条件)
+    ///
+    /// `new()` で以下を検証済み:
+    /// - faces 内の全頂点インデックスが points の範囲内
+    /// - owner の各要素が n_cells 未満
+    /// - neighbor の各要素が n_cells 未満
+    /// - neighbor.len() == n_internal_faces
     fn ensure_cell_geometry(&self) {
         self.cell_volumes.get_or_init(|| {
             let (volumes, centers) = geometry::compute_cell_geometry(
@@ -196,6 +208,12 @@ impl PrimitiveMesh {
 
     // Lazy connectivity accessors
 
+    /// # Safety (論理的前提条件)
+    ///
+    /// `new()` で以下を検証済み:
+    /// - owner の各要素が n_cells 未満
+    /// - neighbor の各要素が n_cells 未満
+    /// - neighbor.len() == n_internal_faces
     fn ensure_cell_faces(&self) -> &[Vec<usize>] {
         self.cell_faces.get_or_init(|| {
             geometry::compute_cell_faces(
@@ -211,6 +229,12 @@ impl PrimitiveMesh {
         self.ensure_cell_faces()
     }
 
+    /// # Safety (論理的前提条件)
+    ///
+    /// `new()` で以下を検証済み:
+    /// - owner の各要素が n_cells 未満
+    /// - neighbor の各要素が n_cells 未満
+    /// - neighbor.len() == n_internal_faces
     pub fn cell_cells(&self) -> &[Vec<usize>] {
         self.cell_cells.get_or_init(|| {
             let cf = self.ensure_cell_faces();
@@ -224,6 +248,12 @@ impl PrimitiveMesh {
         })
     }
 
+    /// # Safety (論理的前提条件)
+    ///
+    /// `new()` で以下を検証済み:
+    /// - owner の各要素が n_cells 未満 (ensure_cell_faces の前提条件)
+    /// - neighbor の各要素が n_cells 未満 (ensure_cell_faces の前提条件)
+    /// - cell_faces が返す面インデックスは owner/neighbor 由来のため faces の範囲内
     pub fn cell_points(&self) -> &[Vec<usize>] {
         self.cell_points.get_or_init(|| {
             let cf = self.ensure_cell_faces();
