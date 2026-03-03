@@ -11,6 +11,25 @@ use crate::patch::{
 use crate::primitive_mesh::PrimitiveMesh;
 use crate::zone::{FaceZone, Zone};
 
+/// Extracts and validates neighbor cell centers for a coupled patch.
+fn take_neighbor_centers(
+    map: &mut HashMap<String, Vec<Vector>>,
+    name: &str,
+    expected: usize,
+) -> Result<Vec<Vector>, MeshError> {
+    let centers = map.remove(name).ok_or_else(|| MeshError::MissingNeighborCenters {
+        patch_name: name.to_string(),
+    })?;
+    if centers.len() != expected {
+        return Err(MeshError::NeighborCentersLengthMismatch {
+            patch_name: name.to_string(),
+            expected,
+            got: centers.len(),
+        });
+    }
+    Ok(centers)
+}
+
 /// Polyhedral mesh with boundary patches, zones, and parallel metadata.
 ///
 /// Owns a `PrimitiveMesh` and augments it with:
@@ -55,9 +74,10 @@ impl PolyMesh {
 
         // Validate face range coverage
         if !patch_specs.is_empty() {
-            let patch_start = patch_specs.first().unwrap().start();
-            let patch_end =
-                patch_specs.last().unwrap().start() + patch_specs.last().unwrap().size();
+            let first = patch_specs.first().unwrap();
+            let last = patch_specs.last().unwrap();
+            let patch_start = first.start();
+            let patch_end = last.start() + last.size();
 
             if patch_start != boundary_start || patch_end != boundary_end {
                 return Err(MeshError::PatchFaceRangeMismatch {
@@ -116,18 +136,8 @@ impl PolyMesh {
                     transform,
                     face_cells,
                 } => {
-                    let centers = neighbor_centers.remove(&name).ok_or_else(|| {
-                        MeshError::MissingNeighborCenters {
-                            patch_name: name.clone(),
-                        }
-                    })?;
-                    if centers.len() != size {
-                        return Err(MeshError::NeighborCentersLengthMismatch {
-                            patch_name: name,
-                            expected: size,
-                            got: centers.len(),
-                        });
-                    }
+                    let centers =
+                        take_neighbor_centers(&mut neighbor_centers, &name, size)?;
                     Box::new(CyclicPolyPatch::new(
                         name, start, size, transform, face_cells, centers,
                     ))
@@ -139,18 +149,8 @@ impl PolyMesh {
                     neighbor_rank,
                     face_cells,
                 } => {
-                    let centers = neighbor_centers.remove(&name).ok_or_else(|| {
-                        MeshError::MissingNeighborCenters {
-                            patch_name: name.clone(),
-                        }
-                    })?;
-                    if centers.len() != size {
-                        return Err(MeshError::NeighborCentersLengthMismatch {
-                            patch_name: name,
-                            expected: size,
-                            got: centers.len(),
-                        });
-                    }
+                    let centers =
+                        take_neighbor_centers(&mut neighbor_centers, &name, size)?;
                     Box::new(ProcessorPolyPatch::new(
                         name,
                         start,
