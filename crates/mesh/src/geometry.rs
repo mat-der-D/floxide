@@ -55,16 +55,15 @@ pub(crate) fn compute_face_geometry(points: &[Vector], face: &[usize]) -> (Vecto
 /// 以下の前提条件に違反した場合、実行時パニックとなる。
 /// - `faces` の各面に含まれる頂点インデックスが `points` の範囲内であること。
 /// - `owner` の各要素が `n_cells` 未満であること。
-/// - `neighbor[0..n_internal_faces]` の各要素が `n_cells` 未満であること。
-/// - `n_internal_faces <= neighbor.len()` であること。
+/// - `neighbor` の各要素が `n_cells` 未満であること。
 pub(crate) fn compute_cell_geometry(
     points: &[Vector],
     faces: &[Vec<usize>],
     owner: &[usize],
     neighbor: &[usize],
-    n_internal_faces: usize,
     n_cells: usize,
 ) -> (Vec<f64>, Vec<Vector>) {
+    let n_internal_faces = neighbor.len();
     // まず全面のジオメトリを計算
     let face_geom: Vec<(Vector, Vector)> = faces
         .iter()
@@ -129,20 +128,18 @@ pub(crate) fn compute_cell_geometry(
 ///
 /// 以下の前提条件に違反した場合、実行時パニックとなる。
 /// - `owner` の各要素が `n_cells` 未満であること。
-/// - `neighbor[0..n_internal_faces]` の各要素が `n_cells` 未満であること。
-/// - `n_internal_faces <= neighbor.len()` であること。
+/// - `neighbor` の各要素が `n_cells` 未満であること。
 pub(crate) fn compute_cell_faces(
     owner: &[usize],
     neighbor: &[usize],
-    n_internal_faces: usize,
     n_cells: usize,
 ) -> Vec<Vec<usize>> {
     let mut result = vec![Vec::new(); n_cells];
     for (fi, &o) in owner.iter().enumerate() {
         result[o].push(fi);
     }
-    for fi in 0..n_internal_faces {
-        result[neighbor[fi]].push(fi);
+    for (fi, &n) in neighbor.iter().enumerate() {
+        result[n].push(fi);
     }
     result
 }
@@ -152,19 +149,16 @@ pub(crate) fn compute_cell_faces(
 /// # Panics
 ///
 /// 以下の前提条件に違反した場合、実行時パニックとなる。
-/// - `n_internal_faces <= owner.len()` かつ `n_internal_faces <= neighbor.len()` であること。
-/// - `owner[0..n_internal_faces]` および `neighbor[0..n_internal_faces]` の各要素が `n_cells` 未満であること。
+/// - `owner[0..neighbor.len()]` および `neighbor` の各要素が `n_cells` 未満であること。
 pub(crate) fn compute_cell_cells(
     cell_faces: &[Vec<usize>],
     owner: &[usize],
     neighbor: &[usize],
-    n_internal_faces: usize,
     n_cells: usize,
 ) -> Vec<Vec<usize>> {
     let mut result = vec![Vec::new(); n_cells];
-    for fi in 0..n_internal_faces {
+    for (fi, &n) in neighbor.iter().enumerate() {
         let o = owner[fi];
-        let n = neighbor[fi];
         result[o].push(n);
         result[n].push(o);
     }
@@ -295,7 +289,7 @@ mod tests {
         let faces = cube_faces();
         let owner = vec![0; 6];
         let neighbor: Vec<usize> = vec![];
-        let (vols, _) = compute_cell_geometry(&pts, &faces, &owner, &neighbor, 0, 1);
+        let (vols, _) = compute_cell_geometry(&pts, &faces, &owner, &neighbor, 1);
         assert_eq!(vols.len(), 1);
         assert!(
             (vols[0] - 1.0).abs() < 1e-10,
@@ -310,7 +304,7 @@ mod tests {
         let faces = cube_faces();
         let owner = vec![0; 6];
         let neighbor: Vec<usize> = vec![];
-        let (_, centers) = compute_cell_geometry(&pts, &faces, &owner, &neighbor, 0, 1);
+        let (_, centers) = compute_cell_geometry(&pts, &faces, &owner, &neighbor, 1);
         let expected = Vector::new(0.5, 0.5, 0.5);
         let diff = (centers[0] - expected).mag();
         assert!(diff < 1e-10, "center error {diff}");
@@ -348,7 +342,7 @@ mod tests {
         ];
         let owner = vec![0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1];
         let neighbor = vec![1];
-        let (vols, centers) = compute_cell_geometry(&pts, &faces, &owner, &neighbor, 1, 2);
+        let (vols, centers) = compute_cell_geometry(&pts, &faces, &owner, &neighbor, 2);
         for i in 0..2 {
             assert!(
                 (vols[i] - 1.0).abs() < 1e-10,
@@ -369,7 +363,7 @@ mod tests {
     fn cell_faces_single_cell() {
         let owner = vec![0, 0, 0, 0, 0, 0];
         let neighbor: Vec<usize> = vec![];
-        let cf = compute_cell_faces(&owner, &neighbor, 0, 1);
+        let cf = compute_cell_faces(&owner, &neighbor, 1);
         assert_eq!(cf.len(), 1);
         assert_eq!(cf[0], vec![0, 1, 2, 3, 4, 5]);
     }
@@ -379,7 +373,7 @@ mod tests {
         // f0: internal (owner=0, neighbor=1), f1..f5: cell0, f6..f10: cell1
         let owner = vec![0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1];
         let neighbor = vec![1];
-        let cf = compute_cell_faces(&owner, &neighbor, 1, 2);
+        let cf = compute_cell_faces(&owner, &neighbor, 2);
         assert!(cf[0].contains(&0), "cell 0 should contain internal face 0");
         assert!(cf[1].contains(&0), "cell 1 should contain internal face 0");
         assert_eq!(cf[0].len(), 6);
@@ -393,7 +387,7 @@ mod tests {
         let cf = vec![vec![0, 1, 2, 3, 4, 5]];
         let owner = vec![0; 6];
         let neighbor: Vec<usize> = vec![];
-        let cc = compute_cell_cells(&cf, &owner, &neighbor, 0, 1);
+        let cc = compute_cell_cells(&cf, &owner, &neighbor, 1);
         assert_eq!(cc.len(), 1);
         assert!(cc[0].is_empty());
     }
@@ -403,7 +397,7 @@ mod tests {
         let cf = vec![vec![0, 1, 2, 3, 4, 5], vec![0, 6, 7, 8, 9, 10]];
         let owner = vec![0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1];
         let neighbor = vec![1];
-        let cc = compute_cell_cells(&cf, &owner, &neighbor, 1, 2);
+        let cc = compute_cell_cells(&cf, &owner, &neighbor, 2);
         assert_eq!(cc[0], vec![1]);
         assert_eq!(cc[1], vec![0]);
     }

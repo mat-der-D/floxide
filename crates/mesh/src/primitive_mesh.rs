@@ -10,7 +10,6 @@ pub struct PrimitiveMesh {
     faces: Vec<Vec<usize>>,
     owner: Vec<usize>,
     neighbor: Vec<usize>,
-    n_internal_faces: usize,
     n_cells: usize,
 
     cell_centers: OnceLock<Vec<Vector>>,
@@ -29,7 +28,6 @@ impl PrimitiveMesh {
         faces: Vec<Vec<usize>>,
         owner: Vec<usize>,
         neighbor: Vec<usize>,
-        n_internal_faces: usize,
         n_cells: usize,
     ) -> Result<Self, MeshError> {
         // owner length check
@@ -37,14 +35,6 @@ impl PrimitiveMesh {
             return Err(MeshError::OwnerLengthMismatch {
                 expected: faces.len(),
                 got: owner.len(),
-            });
-        }
-
-        // neighbor length check
-        if neighbor.len() != n_internal_faces {
-            return Err(MeshError::NeighborLengthMismatch {
-                expected: n_internal_faces,
-                got: neighbor.len(),
             });
         }
 
@@ -89,7 +79,6 @@ impl PrimitiveMesh {
             faces,
             owner,
             neighbor,
-            n_internal_faces,
             n_cells,
             cell_centers: OnceLock::new(),
             cell_volumes: OnceLock::new(),
@@ -120,7 +109,7 @@ impl PrimitiveMesh {
     }
 
     pub fn n_internal_faces(&self) -> usize {
-        self.n_internal_faces
+        self.neighbor.len()
     }
 
     pub fn n_cells(&self) -> usize {
@@ -178,7 +167,6 @@ impl PrimitiveMesh {
     /// - faces 内の全頂点インデックスが points の範囲内
     /// - owner の各要素が n_cells 未満
     /// - neighbor の各要素が n_cells 未満
-    /// - neighbor.len() == n_internal_faces
     fn ensure_cell_geometry(&self) {
         self.cell_volumes.get_or_init(|| {
             let (volumes, centers) = geometry::compute_cell_geometry(
@@ -186,7 +174,6 @@ impl PrimitiveMesh {
                 &self.faces,
                 &self.owner,
                 &self.neighbor,
-                self.n_internal_faces,
                 self.n_cells,
             );
             let _ = self.cell_centers.set(centers);
@@ -213,16 +200,9 @@ impl PrimitiveMesh {
     /// `new()` で以下を検証済み:
     /// - owner の各要素が n_cells 未満
     /// - neighbor の各要素が n_cells 未満
-    /// - neighbor.len() == n_internal_faces
     fn ensure_cell_faces(&self) -> &[Vec<usize>] {
-        self.cell_faces.get_or_init(|| {
-            geometry::compute_cell_faces(
-                &self.owner,
-                &self.neighbor,
-                self.n_internal_faces,
-                self.n_cells,
-            )
-        })
+        self.cell_faces
+            .get_or_init(|| geometry::compute_cell_faces(&self.owner, &self.neighbor, self.n_cells))
     }
 
     pub fn cell_faces(&self) -> &[Vec<usize>] {
@@ -234,17 +214,10 @@ impl PrimitiveMesh {
     /// `new()` で以下を検証済み:
     /// - owner の各要素が n_cells 未満
     /// - neighbor の各要素が n_cells 未満
-    /// - neighbor.len() == n_internal_faces
     pub fn cell_cells(&self) -> &[Vec<usize>] {
         self.cell_cells.get_or_init(|| {
             let cf = self.ensure_cell_faces();
-            geometry::compute_cell_cells(
-                cf,
-                &self.owner,
-                &self.neighbor,
-                self.n_internal_faces,
-                self.n_cells,
-            )
+            geometry::compute_cell_cells(cf, &self.owner, &self.neighbor, self.n_cells)
         })
     }
 
@@ -287,7 +260,7 @@ mod tests {
         ];
         let owner = vec![0, 0, 0, 0, 0, 0];
         let neighbor = vec![];
-        PrimitiveMesh::new(points, faces, owner, neighbor, 0, 1).unwrap()
+        PrimitiveMesh::new(points, faces, owner, neighbor, 1).unwrap()
     }
 
     /// 2セルメッシュ（内部面1つ）
@@ -323,7 +296,7 @@ mod tests {
         ];
         let owner = vec![0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1];
         let neighbor = vec![1]; // face 0 connects cell 0 and cell 1
-        PrimitiveMesh::new(points, faces, owner, neighbor, 1, 2).unwrap()
+        PrimitiveMesh::new(points, faces, owner, neighbor, 2).unwrap()
     }
 
     // ===== Task 7.1: Test helpers =====
@@ -350,20 +323,8 @@ mod tests {
         let points = vec![Vector::zero(); 4];
         let faces = vec![vec![0, 1, 2]];
         let owner = vec![0, 0]; // wrong length
-        let result = PrimitiveMesh::new(points, faces, owner, vec![], 0, 1);
+        let result = PrimitiveMesh::new(points, faces, owner, vec![], 1);
         assert!(matches!(result, Err(MeshError::OwnerLengthMismatch { .. })));
-    }
-
-    #[test]
-    fn test_new_neighbor_length_mismatch_returns_err() {
-        let points = vec![Vector::zero(); 4];
-        let faces = vec![vec![0, 1, 2]];
-        let owner = vec![0];
-        let result = PrimitiveMesh::new(points, faces, owner, vec![0], 0, 1); // neighbor len=1 but n_internal=0
-        assert!(matches!(
-            result,
-            Err(MeshError::NeighborLengthMismatch { .. })
-        ));
     }
 
     #[test]
@@ -371,7 +332,7 @@ mod tests {
         let points = vec![Vector::zero(); 4];
         let faces = vec![vec![0, 1, 2]];
         let owner = vec![5]; // out of range for n_cells=1
-        let result = PrimitiveMesh::new(points, faces, owner, vec![], 0, 1);
+        let result = PrimitiveMesh::new(points, faces, owner, vec![], 1);
         assert!(matches!(
             result,
             Err(MeshError::OwnerIndexOutOfRange { .. })
@@ -384,7 +345,7 @@ mod tests {
         let faces = vec![vec![0, 1, 2], vec![1, 2, 3]];
         let owner = vec![0, 1];
         let neighbor = vec![5]; // out of range
-        let result = PrimitiveMesh::new(points, faces, owner, neighbor, 1, 2);
+        let result = PrimitiveMesh::new(points, faces, owner, neighbor, 2);
         assert!(matches!(
             result,
             Err(MeshError::NeighborIndexOutOfRange { .. })
@@ -396,7 +357,7 @@ mod tests {
         let points = vec![Vector::zero(); 3];
         let faces = vec![vec![0, 1, 99]]; // 99 out of range
         let owner = vec![0];
-        let result = PrimitiveMesh::new(points, faces, owner, vec![], 0, 1);
+        let result = PrimitiveMesh::new(points, faces, owner, vec![], 1);
         assert!(matches!(
             result,
             Err(MeshError::PointIndexOutOfRange { .. })

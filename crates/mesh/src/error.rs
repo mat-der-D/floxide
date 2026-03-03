@@ -2,8 +2,6 @@
 pub enum MeshError {
     #[error("owner length mismatch: expected {expected}, got {got}")]
     OwnerLengthMismatch { expected: usize, got: usize },
-    #[error("neighbor length mismatch: expected {expected}, got {got}")]
-    NeighborLengthMismatch { expected: usize, got: usize },
     #[error("owner index out of range: face {face}, cell {cell}, n_cells {n_cells}")]
     OwnerIndexOutOfRange {
         face: usize,
