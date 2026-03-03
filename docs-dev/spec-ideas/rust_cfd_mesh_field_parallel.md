@@ -140,7 +140,7 @@ OpenFOAM は物理境界とプロセッサ境界を同一の仮想関数イン�
 
 ```rust
 // 離散化演算は境界の種類を意識しない
-fn gradient(field: &VolumeField<f64, Fresh>) -> Vec<[f64; 3]> {
+fn gradient(field: &VolumeField<f64, Fresh>) -> Vec<Vector> {
     // ...
     for patch_id in 0..mesh.n_patches() {
         let patch_vals = field.boundary_values(patch_id);  // 統一アクセス
@@ -166,7 +166,7 @@ trait PhysicalBC<T> {
 
 ```rust
 struct ProcessorPatch<T> {
-    neighbour_rank: i32,
+    neighbor_rank: i32,
     face_cells: Vec<usize>,   // 送信すべきローカルセル
     send_buf: Vec<T>,
     recv_buf: Vec<T>,          // 受信した隣接プロセスの値

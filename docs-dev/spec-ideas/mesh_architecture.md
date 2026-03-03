@@ -31,18 +31,18 @@ pub type Face = Vec<usize>;  // 任意多角形
 
 pub struct PrimitiveMesh {
     // 基本データ（構築時確定、不変）
-    points: Vec<[f64; 3]>,
+    points: Vec<Vector>,
     faces: Vec<Face>,
     owner: Vec<usize>,
-    neighbour: Vec<usize>,      // len == n_internal_faces
+    neighbor: Vec<usize>,      // len == n_internal_faces
     n_internal_faces: usize,
     n_cells: usize,
 
     // 遅延計算ジオメトリ
-    cell_centres: OnceCell<Vec<[f64; 3]>>,
-    face_centres: OnceCell<Vec<[f64; 3]>>,
+    cell_centers: OnceCell<Vec<Vector>>,
+    face_centers: OnceCell<Vec<Vector>>,
     cell_volumes: OnceCell<Vec<f64>>,
-    face_areas:   OnceCell<Vec<[f64; 3]>>,   // 面積ベクトル（法線×面積）
+    face_areas:   OnceCell<Vec<Vector>>,   // 面積ベクトル（法線×面積）
 
     // 遅延計算接続情報
     cell_cells:  OnceCell<Vec<Vec<usize>>>,
@@ -73,7 +73,7 @@ impl PrimitiveMesh {
 |------|------|------|
 | 遅延計算の実現 | `OnceCell` | 構築後不変、`&self` で初期化可能、`Sync` を自動的に満たす |
 | 面の表現 | `Vec<usize>`（任意多角形） | OpenFOAM 同等の汎用性。将来 `SmallVec<[usize; 4]>` で最適化可能 |
-| `neighbour` の長さ | 内部面のみ | 境界面は neighbour なし。OpenFOAM と同じ慣行 |
+| `neighbor` の長さ | 内部面のみ | 境界面は neighbor なし。OpenFOAM と同じ慣行 |
 | trait にするか | struct | 「異なるメッシュ実装を差し替える」ユースケースがない |
 | 動的メッシュ対応 | 将来 `OnceCell` → リセット可能な `LazyCache` 型に置き換え | 公開 API（`&self` アクセサ）は変わらない |
 
@@ -90,7 +90,7 @@ pub struct PolyMesh {
     cell_zones: Vec<Zone>,
     face_zones: Vec<FaceZone>,
     point_zones: Vec<Zone>,
-    old_points: Option<Vec<[f64; 3]>>,       // 非定常/メッシュ運動用
+    old_points: Option<Vec<Vector>>,          // 非定常/メッシュ運動用
     global_data: Option<GlobalMeshData>,      // シリアル時 None
 }
 
@@ -143,14 +143,14 @@ pub trait PolyPatch: Send + Sync {
     fn as_coupled_mut(&mut self) -> Option<&mut dyn CoupledPatch> { None }
 
     // メッシュ操作フック（デフォルト: 何もしない）
-    fn move_points(&mut self, _new_points: &[[f64; 3]]) {}
+    fn move_points(&mut self, _new_points: &[Vector]) {}
 }
 
 pub trait CoupledPatch: PolyPatch {
     fn face_cells(&self) -> &[usize];
-    fn neighbour_cell_centres(&self) -> &[[f64; 3]];
-    fn set_neighbour_cell_centres(&mut self, centres: Vec<[f64; 3]>);
-    fn neighbour_rank(&self) -> Option<i32>;  // ProcessorPatch のみ Some
+    fn neighbor_cell_centers(&self) -> &[Vector];
+    fn set_neighbor_cell_centers(&mut self, centers: Vec<Vector>);
+    fn neighbor_rank(&self) -> Option<i32>;  // ProcessorPatch のみ Some
     fn transform(&self) -> &Transform;
 }
 ```
@@ -160,13 +160,13 @@ pub trait CoupledPatch: PolyPatch {
 ```rust
 pub trait FvPatch: Send + Sync {
     fn poly_patch(&self) -> &dyn PolyPatch;
-    fn delta(&self, mesh: &PrimitiveMesh) -> Vec<[f64; 3]>;
+    fn delta(&self, mesh: &PrimitiveMesh) -> Vec<Vector>;
     fn weights(&self, mesh: &PrimitiveMesh) -> Vec<f64>;
 }
 
 pub trait CoupledFvPatch: FvPatch {
     fn poly_coupled_patch(&self) -> &dyn CoupledPatch;
-    fn delta_neighbour(&self, mesh: &PrimitiveMesh) -> Vec<[f64; 3]>;
+    fn delta_neighbor(&self, mesh: &PrimitiveMesh) -> Vec<Vector>;
 }
 ```
 
@@ -222,7 +222,7 @@ pub struct FvMesh {
     weights: OnceCell<Vec<f64>>,
     delta_coeffs: OnceCell<Vec<f64>>,
     non_orth_delta_coeffs: OnceCell<Vec<f64>>,
-    non_orth_correction_vectors: OnceCell<Vec<[f64; 3]>>,
+    non_orth_correction_vectors: OnceCell<Vec<Vector>>,
 
     // 旧時刻データ（非定常計算用）
     v0: Option<Vec<f64>>,
@@ -266,8 +266,8 @@ OpenFOAM の `surfaceInterpolation` に相当。パッチごとの計算差異�
 Phase 1: I/O → PrimitiveMesh + パッチ定義（各プロセッサ独立）
 
 Phase 2: 具象型のまま構築・初期化（型消去前）
-  - CyclicPatch: 対パッチの face_cells からローカルに neighbour_cell_centres を計算
-  - ProcessorPatch: 隣接ランクと MPI で cell_centres を交換
+  - CyclicPatch: 対パッチの face_cells からローカルに neighbor_cell_centers を計算
+  - ProcessorPatch: 隣接ランクと MPI で cell_centers を交換
 
 Phase 3: 初期化完了後に型消去
   - Vec<具象型> → Vec<Box<dyn PolyPatch>>
@@ -284,7 +284,7 @@ pub fn build_fv_mesh(
     raw_patches: Vec<RawPatchDef>,
     world: Option<&SystemCommunicator>,
 ) -> FvMesh {
-    let cell_centres = primitive.cell_centres();
+    let cell_centers = primitive.cell_centers();
 
     // Phase 2: 具象型のまま構築・初期化
     let mut walls: Vec<WallPolyPatch> = vec![];
@@ -293,21 +293,21 @@ pub fn build_fv_mesh(
     // ... パッチ定義を振り分けて構築
 
     for cyc in &mut cyclics {
-        let neighbour_centres: Vec<_> = cyc.neighbour_face_cells()
+        let neighbor_centers: Vec<_> = cyc.neighbor_face_cells()
             .iter()
-            .map(|&c| cell_centres[c])
+            .map(|&c| cell_centers[c])
             .collect();
-        cyc.neighbour_cell_centres = neighbour_centres;
+        cyc.neighbor_cell_centers = neighbor_centers;
     }
 
     if let Some(world) = world {
         for proc in &mut processors {
             let local: Vec<_> = proc.face_cells
                 .iter()
-                .map(|&c| cell_centres[c])
+                .map(|&c| cell_centers[c])
                 .collect();
-            proc.neighbour_cell_centres =
-                mpi_exchange(world, proc.neighbour_rank, &local);
+            proc.neighbor_cell_centers =
+                mpi_exchange(world, proc.neighbor_rank, &local);
         }
     }
 
@@ -329,20 +329,20 @@ pub fn build_fv_mesh(
 
 ```rust
 impl FvMesh {
-    pub fn move_points(&mut self, new_points: Vec<[f64; 3]>, world: &SystemCommunicator) {
+    pub fn move_points(&mut self, new_points: Vec<Vector>, world: &SystemCommunicator) {
         self.poly.primitive.set_points(new_points);
         self.clear_geometry();
 
-        let centres = self.poly.primitive.cell_centres();
+        let centers = self.poly.primitive.cell_centers();
 
         for &i in &self.processor_patch_indices {
             let coupled = self.poly.patches[i].as_coupled_mut().unwrap();
             let local: Vec<_> = coupled.face_cells()
                 .iter()
-                .map(|&c| centres[c])
+                .map(|&c| centers[c])
                 .collect();
-            let remote = mpi_exchange(world, coupled.neighbour_rank().unwrap(), &local);
-            coupled.set_neighbour_cell_centres(remote);
+            let remote = mpi_exchange(world, coupled.neighbor_rank().unwrap(), &local);
+            coupled.set_neighbor_cell_centers(remote);
         }
     }
 }
@@ -375,7 +375,7 @@ impl FvMesh {
 | パッチ × `inventory` | I/O 時のファクトリ登録に使用 | 文字列 → 具象型の生成 |
 | LduMesh trait 配置 | mesh クレート | orphan rule 制約 |
 | 並列ジオメトリ交換 | 型消去前に具象型で実施 | ダウンキャスト不要 |
-| 動的メッシュでの再交換 | `CoupledPatch::set_neighbour_cell_centres` | trait 経由で型消去後も可能 |
+| 動的メッシュでの再交換 | `CoupledPatch::set_neighbor_cell_centers` | trait 経由で型消去後も可能 |
 | globalMeshData | `Option<GlobalMeshData>` in PolyMesh | シリアル時 None、並列時に構築 |
 | ゾーン | 3種を PolyMesh に保持 | MRF/ソース項の基盤 |
 | 動的メッシュプラグイン | `Option<Box<dyn MeshMover>>` 等 | 当面 None、拡張点として確保 |

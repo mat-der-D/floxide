@@ -67,7 +67,8 @@ fn gradient<T: FieldValue + HasGrad>(field: &VolumeField<T, Fresh>) -> Vec<T::Gr
 
 - `Result<T, E>` で回復可能なエラーを伝搬（`?` 演算子）
 - `panic!` は内部不変条件の違反にのみ使用
-- `unwrap()` はアプリケーション層（`apps/`）でのみ許容
+- `unwrap()` は原則アプリケーション層（`apps/`）でのみ許容
+- ライブラリ層で `unwrap()` を使用する場合は、論理的に `None`/`Err` が発生し得ないことを示すコメントを必ず添える（例: `OnceLock::get_or_init()` 直後の `get().unwrap()` など、内部不変条件により到達不可能なケース）
 - 詳細は `error-handling.md` を参照
 
 ## パフォーマンス意識

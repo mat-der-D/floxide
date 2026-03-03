@@ -27,6 +27,12 @@
 - trait bounds で演算の合法性をコンパイル時検証
 - `Quantity` トレイト: 次元付き型（`Dim<V, M, L, T>`）から内部値型（`type Value = V`）を公開し、`fvm` 演算子が `T: Quantity where T::Value: FieldValue` として次元付きフィールドを受け取る際の層間接続インターフェース
 
+### スペリング規約
+- **米国式英語（American English）を使用する。** コード内の識別子・コメント・ドキュメントすべてにおいて米国式スペルを用いる（例: `center`（✓）/ `centre`（✗）、`neighbor`（✓）/ `neighbour`（✗）、`color`（✓）/ `colour`（✗））。
+
+### コード内言語規約
+- **コード内のコメント・ドキュメントはすべて英語で記述する。** インラインコメント（`//`）、doc comment（`///`、`//!`）を問わず、日本語は使用しない。
+
 ### コード品質
 - `cargo clippy` による静的解析
 - `cargo fmt` によるフォーマット統一

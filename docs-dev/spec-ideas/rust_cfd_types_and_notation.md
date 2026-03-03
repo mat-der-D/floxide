@@ -60,12 +60,12 @@ type MassFlux    = Dim<f64,    P1, N2, N1>;  // kg/(m²·s)
 ```
 物理の世界（次元付き）            数学の世界（次元なし）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-VolumeField<Velocity>   ──fvm.ddt──→   FvMatrix<[f64; 3]>
-VolumeField<Pressure>   ──fvc.grad──→  ExplicitField<[f64; 3]>
+VolumeField<Velocity>   ──fvm.ddt──→   FvMatrix<Vector>
+VolumeField<Pressure>   ──fvc.grad──→  ExplicitField<Vector>
                                             ↓
                                        solver.solve()
                                             ↓
-                                       解ベクトル: Vec<[f64; 3]>
+                                       解ベクトル: Vec<Vector>
 ```
 
 **設計上の根拠：**

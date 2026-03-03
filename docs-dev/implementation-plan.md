@@ -173,16 +173,16 @@ P6    simple-solver-integration
 **スコープ**:
 - `Face = Vec<usize>`（任意多角形）の型エイリアス
 - `PrimitiveMesh` 構造体:
-  - 基本データ（構築時確定・不変）: `points`, `faces`, `owner`, `neighbour`, `n_internal_faces`, `n_cells`
-  - 遅延計算ジオメトリ（`OnceCell`）: `cell_centres`, `face_centres`, `cell_volumes`, `face_areas`
+  - 基本データ（構築時確定・不変）: `points`, `faces`, `owner`, `neighbor`, `n_internal_faces`, `n_cells`
+  - 遅延計算ジオメトリ（`OnceCell`）: `cell_centers`, `face_centers`, `cell_volumes`, `face_areas`
   - 遅延計算接続情報（`OnceCell`）: `cell_cells`, `cell_faces`, `cell_points`
 - `&self` アクセサメソッド（アクセス時に初期化）:
-  - `cell_volumes()`, `cell_centres()`, `face_centres()`, `face_areas()`
+  - `cell_volumes()`, `cell_centers()`, `face_centers()`, `face_areas()`
   - `cell_cells()`, `cell_faces()`, `cell_points()`
-- 内部計算メソッド: `calc_cell_volumes()`, `calc_face_centres()` 等
+- 内部計算メソッド: `calc_cell_volumes()`, `calc_face_centers()` 等
 - 直交格子生成ユーティリティ:
   - `PrimitiveMesh::unit_cube(nx, ny, nz)` — テスト用の単純なメッシュ生成
-- トポロジの整合性検証（owner/neighbour 一貫性等）
+- トポロジの整合性検証（owner/neighbor 一貫性等）
 
 **成果物**: `crates/mesh/src/primitive_mesh.rs`
 
@@ -203,7 +203,7 @@ P6    simple-solver-integration
 **スコープ**:
 - パッチ trait 階層:
   - `PolyPatch` trait: `name()`, `start()`, `size()`, `patch_type()`, `as_coupled()`, `move_points()` フック
-  - `CoupledPatch` trait（`PolyPatch` のサブ trait）: `face_cells()`, `neighbour_cell_centres()`, `set_neighbour_cell_centres()`, `neighbour_rank()`, `transform()`
+  - `CoupledPatch` trait（`PolyPatch` のサブ trait）: `face_cells()`, `neighbor_cell_centers()`, `set_neighbor_cell_centers()`, `neighbor_rank()`, `transform()`
 - パッチ具象型:
   - `WallPolyPatch` (`PolyPatch`)
   - `CyclicPolyPatch` (`PolyPatch` + `CoupledPatch`)
@@ -239,7 +239,7 @@ P6    simple-solver-integration
 
 **スコープ**:
 - `FvPatch` trait: `poly_patch()`, `delta()`, `weights()`
-- `CoupledFvPatch` trait（`FvPatch` のサブ trait）: `poly_coupled_patch()`, `delta_neighbour()`
+- `CoupledFvPatch` trait（`FvPatch` のサブ trait）: `poly_coupled_patch()`, `delta_neighbor()`
 - `LduMesh` trait: `ldu_addressing()`, `n_cells()`
 - `LduAddressing` 構造体: `lower`, `upper`, `losort`, `owner_start`, `losort_start`
 - `FvMesh` 構造体:
@@ -252,7 +252,7 @@ P6    simple-solver-integration
 - `impl LduMesh for FvMesh`
 - 委譲メソッド（`PolyMesh` / `PrimitiveMesh` へのアクセス）
 - 二相構築パターン（`build_fv_mesh` 関数）:
-  - Phase 1-2: 具象型のまま構築・初期化（`CyclicPolyPatch` の `neighbour_cell_centres` 計算、`ProcessorPolyPatch` の MPI 交換 placeholder）
+  - Phase 1-2: 具象型のまま構築・初期化（`CyclicPolyPatch` の `neighbor_cell_centers` 計算、`ProcessorPolyPatch` の MPI 交換 placeholder）
   - Phase 3: 型消去（`Vec<Box<dyn PolyPatch>>`）+ `processor_patch_indices` 記録
   - Phase 4: `PolyMesh` → `FvMesh` 構築
 - 動的メッシュ対応 `move_points()` の骨格（MPI 交換は placeholder）
