@@ -201,15 +201,20 @@ P6    simple-solver-integration
 **前提**: Spec 2-1
 
 **スコープ**:
+- `PatchSpec` enum（Specification/Factory パターン）:
+  - パッチ仕様を値型として定義（`Wall`, `Cyclic`, `Processor`, `Empty`, `Symmetry`, `Wedge` バリアント）
+  - 結合パッチバリアントは `face_cells: Vec<usize>` を含む
+  - `PolyMesh::new` 内で `PatchSpec` から具象パッチ型（`Box<dyn PolyPatch>`）を生成し、隣接セル中心を注入
 - パッチ trait 階層:
-  - `PolyPatch` trait: `name()`, `start()`, `size()`, `patch_type()`, `as_coupled()`, `move_points()` フック
-  - `CoupledPatch` trait（`PolyPatch` のサブ trait）: `face_cells()`, `neighbor_cell_centers()`, `set_neighbor_cell_centers()`, `neighbor_rank()`, `transform()`
+  - `PolyPatch` trait: `name()`, `start()`, `size()`, `kind() -> PatchKind`, `as_coupled()`, `as_coupled_mut()`, `move_points()` フック
+  - `CoupledPatch` trait（`PolyPatch` のサブ trait）: `face_cells()`, `neighbor_cell_centers()`, `neighbor_rank()`, `transform()`
+  - 半初期化状態の排除: `neighbor_cell_centers` は構築時にコンストラクタ引数として確定（setter なし）
 - パッチ具象型:
   - `WallPolyPatch` (`PolyPatch`)
   - `CyclicPolyPatch` (`PolyPatch` + `CoupledPatch`)
   - `ProcessorPolyPatch` (`PolyPatch` + `CoupledPatch`)
   - `EmptyPolyPatch`, `SymmetryPolyPatch`, `WedgePolyPatch` (`PolyPatch`)
-- `Transform` 型（cyclic パッチの変換情報）
+- `Transform` 型（cyclic パッチの変換情報: `Translational(Vector)` / `Rotational { axis, angle, center }`）
 - ゾーン型:
   - `Zone { name: String, indices: Vec<usize> }`（cellZone / pointZone 共用）
   - `FaceZone { name, indices, flip_map }`
@@ -219,14 +224,23 @@ P6    simple-solver-integration
   - `patches: Vec<Box<dyn PolyPatch>>`
   - `cell_zones`, `face_zones`, `point_zones`
   - `old_points: Option<...>`, `global_data: Option<GlobalMeshData>`
+  - コンストラクタ: `new(primitive, patch_specs, neighbor_centers, zones) -> Result<Self, MeshError>`
 - 委譲メソッド（`PrimitiveMesh` へのアクセス）
+- エラーバリアント追加: `PatchFaceRangeMismatch`, `PatchFaceOverlapOrGap`, `MissingNeighborCenters`, `NeighborCentersLengthMismatch`
+
+**設計決定**:
+- Specification/Factory パターン採用: `PatchSpec` enum で仕様を定義し、`PolyMesh::new` 内でデータが全て揃った状態で具象パッチを構築。MPI 通信ロジックがパッチオブジェクトから完全に分離され、半初期化状態が型レベルで存在不可能になる
+- 動的メッシュでの隣接セル中心の再交換は Spec 2-3 で設計（`move_points()` フックと `face_cells()` が拡張ポイント）
+- `GlobalMeshData` の共有点情報（`shared_point_labels` 等）はスコープ外（後続スペックで必要に応じ拡張）
 
 **成果物**: `crates/mesh/src/{poly_mesh, patches/, zones}.rs`
 
 **テスト**:
 - `PolyPatch` のオブジェクト安全性
-- `as_coupled()` によるアップキャスト
-- `WallPolyPatch` / `CyclicPolyPatch` の生成と属性アクセス
+- `as_coupled()` によるダウンキャスト
+- `PatchSpec` からの具象パッチ生成と属性アクセス
+- パッチ面範囲の整合性検証（正常系・異常系）
+- 結合パッチの隣接セル中心注入の検証
 - ゾーンのインデックスアクセス
 
 ---
@@ -251,10 +265,11 @@ P6    simple-solver-integration
   - `mover: Option<Box<dyn MeshMover>>`
 - `impl LduMesh for FvMesh`
 - 委譲メソッド（`PolyMesh` / `PrimitiveMesh` へのアクセス）
-- 二相構築パターン（`build_fv_mesh` 関数）:
-  - Phase 1-2: 具象型のまま構築・初期化（`CyclicPolyPatch` の `neighbor_cell_centers` 計算、`ProcessorPolyPatch` の MPI 交換 placeholder）
-  - Phase 3: 型消去（`Vec<Box<dyn PolyPatch>>`）+ `processor_patch_indices` 記録
-  - Phase 4: `PolyMesh` → `FvMesh` 構築
+- 構築フロー（`build_fv_mesh` 関数）:
+  - Phase 1: `PatchSpec` リストの組み立て（メッシュファイルやドメイン分割情報から）
+  - Phase 2: 隣接セル中心の収集（`CyclicPolyPatch` は幾何計算、`ProcessorPolyPatch` は MPI 交換 placeholder）→ `HashMap<String, Vec<Vector>>`
+  - Phase 3: `PolyMesh::new(primitive, patch_specs, neighbor_centers, zones)` で一括構築（内部で `PatchSpec` → 具象パッチ変換・検証）
+  - Phase 4: `PolyMesh` → `FvMesh` 構築、`processor_patch_indices` 記録
 - 動的メッシュ対応 `move_points()` の骨格（MPI 交換は placeholder）
 - 直交格子から `FvMesh` を生成するテスト用ユーティリティ:
   - `FvMesh::unit_cube(nx, ny, nz)`
