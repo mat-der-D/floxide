@@ -48,7 +48,7 @@ PolyMesh は後続の `FvMesh`（Spec 2-3）の基盤となり、有限体積法
 
 1. The dugong-mesh shall `Transform` 型を提供し、周期パッチの幾何的変換（並進ベクトルまたは回転パラメータ）を表現する
 2. The dugong-mesh shall `CyclicPolyPatch` に変換情報へのアクセスメソッドを提供する
-3. The dugong-mesh shall `CyclicPolyPatch` に隣接セル中心の設定・取得メソッドを提供する（構築時に対向パッチから設定）
+3. The dugong-mesh shall `CyclicPolyPatch` に隣接セル中心の取得メソッドを提供する（隣接セル中心は構築時にコンストラクタ引数として渡される）
 
 ### Requirement 4: ProcessorPolyPatch の並列情報
 
@@ -56,7 +56,7 @@ PolyMesh は後続の `FvMesh`（Spec 2-3）の基盤となり、有限体積法
 
 #### Acceptance Criteria
 
-1. The dugong-mesh shall `ProcessorPolyPatch` に隣接セル中心の設定・取得メソッドを提供する
+1. The dugong-mesh shall `ProcessorPolyPatch` に隣接セル中心の取得メソッドを提供する（隣接セル中心は構築時にコンストラクタ引数として渡される）
 2. The dugong-mesh shall `ProcessorPolyPatch` に face-cell マッピングへのアクセスメソッドを提供する
 
 ### Requirement 5: ゾーン型
@@ -100,10 +100,14 @@ PolyMesh は後続の `FvMesh`（Spec 2-3）の基盤となり、有限体積法
 
 #### Acceptance Criteria
 
-1. The dugong-mesh shall `PolyMesh` のコンストラクタを提供し、`PrimitiveMesh`・パッチリスト・ゾーンリストを受け取る
-2. When パッチの面範囲が `PrimitiveMesh` の境界面範囲と整合しないとき, the dugong-mesh shall エラーを返す
-3. When パッチの面範囲が重複または欠落しているとき, the dugong-mesh shall エラーを返す
-4. The dugong-mesh shall テスト用に直交格子から `PolyMesh` を生成するユーティリティを提供する
+1. The dugong-mesh shall `PatchSpec` enum を提供し、各パッチ種別の構築に必要なパラメータを値型として保持する（面範囲・パッチ名・種別固有パラメータ）
+2. The dugong-mesh shall `PolyMesh` のコンストラクタを提供し、`PrimitiveMesh`・パッチ仕様リスト（`Vec<PatchSpec>`）・結合パッチの隣接セル中心マップ・ゾーンリストを受け取る
+3. The dugong-mesh shall `PolyMesh` コンストラクタ内で `PatchSpec` から具象パッチ型（`Box<dyn PolyPatch>`）を生成し、結合パッチには隣接セル中心マップから対応データを注入する
+4. When パッチの面範囲が `PrimitiveMesh` の境界面範囲と整合しないとき, the dugong-mesh shall エラーを返す
+5. When パッチの面範囲が重複または欠落しているとき, the dugong-mesh shall エラーを返す
+6. When 結合パッチ仕様に対応する隣接セル中心がマップに存在しないとき, the dugong-mesh shall エラーを返す
+7. When 隣接セル中心の要素数がパッチの面数と一致しないとき, the dugong-mesh shall エラーを返す
+8. The dugong-mesh shall テスト用に直交格子から `PolyMesh` を生成するユーティリティを提供する
 
 ### Requirement 9: エラーハンドリング
 
@@ -111,5 +115,6 @@ PolyMesh は後続の `FvMesh`（Spec 2-3）の基盤となり、有限体積法
 
 #### Acceptance Criteria
 
-1. The dugong-mesh shall パッチ関連のエラーバリアントを `MeshError` に追加する
+1. The dugong-mesh shall パッチ関連のエラーバリアントを `MeshError` に追加する（面範囲不整合・隣接セル中心の欠落・長さ不一致）
 2. If パッチの面範囲検証が失敗したとき, the dugong-mesh shall 具体的な不整合箇所を含むエラーメッセージを返す
+3. If 結合パッチの隣接セル中心が未提供または長さ不一致のとき, the dugong-mesh shall パッチ名と期待サイズを含むエラーメッセージを返す
