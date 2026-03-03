@@ -286,11 +286,9 @@ impl PolyMesh {
 }
 
 // Static assertion: PolyMesh is Send + Sync
-const _: () = {
+const _: fn() = || {
     fn assert_send_sync<T: Send + Sync>() {}
-    fn check() {
-        assert_send_sync::<PolyMesh>();
-    }
+    assert_send_sync::<PolyMesh>();
 };
 
 #[cfg(test)]
